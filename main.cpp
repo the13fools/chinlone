@@ -134,34 +134,42 @@ int main(int argc, char *argv[])
   buildEdgesPerFace(F, E, F_edges); 
 
 
-
-  Eigen::MatrixXd field = Eigen::MatrixXd::Zero(F.rows(), 3);
-
-  Eigen::Matrix3d t(Eigen::AngleAxisd(M_PI, Eigen::Vector3d(0,0,1)));
-  field.row(0) = t * Eigen::Vector3d(1, 0, 0);
-
-  propogateField(F, V, E, F_edges, field);
-  Eigen::MatrixXd field_div =  Eigen::MatrixXd::Zero(F_div.rows(), 3);
-
-  for (int i = 0; i < field.rows(); i++) 
-  {
-      for (int j = 0; j < pow(4, divFactor); j++)
-      {
-          field_div.row( pow(4, divFactor) * i + j) = field.row(i);
-      } 
-  }
-
-
-  Eigen::MatrixXd F_centroids;
-  computeCentroids(F_div, V_div, F_centroids); 
- 
-  const Eigen::RowVector3d red(0.9,.1,.1),green(0.1,0.9,0.2),blue(0.1,0.2,0.8);
-
+  
   // Plot the mesh
   igl::viewer::Viewer *viewer = new igl::viewer::Viewer();
   viewer->data.set_mesh(V_div, F_div);
   viewer->data.set_face_based(true);
-  viewer->data.add_edges( F_centroids  + field_div * .3 / 5., F_centroids, green);
+
+  const Eigen::RowVector3d red(0.9,.1,.1),green(0.1,0.9,0.2),blue(0.1,0.2,0.8),black(0,0,0);
+  Eigen::RowVector3d colors[] = {red, green, blue,black};
+
+  Eigen::MatrixXd F_centroids;
+  computeCentroids(F_div, V_div, F_centroids); 
+
+  for (int ax = 0; ax < 4; ax ++) 
+  {
+
+      Eigen::MatrixXd field = Eigen::MatrixXd::Zero(F.rows(), 3);
+
+      Eigen::Matrix3d t(Eigen::AngleAxisd(M_PI *( .3 + 2./4. *ax), Eigen::Vector3d(0,0,1)));
+      field.row(0) = t * Eigen::Vector3d(1, 0, 0);
+
+      propogateField(F, V, E, F_edges, field);
+      Eigen::MatrixXd field_div =  Eigen::MatrixXd::Zero(F_div.rows(), 3);
+
+      for (int i = 0; i < field.rows(); i++) 
+      {
+	  for (int j = 0; j < pow(4, divFactor); j++)
+	  {
+	      field_div.row( pow(4, divFactor) * i + j) = field.row(i);
+	  } 
+      }
+      logToFile(field_div, "cube", std::to_string(ax));
+      igl::writeOBJ("cube.obj",V_div,F_div);
+
+      viewer->data.add_edges( F_centroids  + field_div * .1 / 5., F_centroids, colors[ax]);
+  }
+
 
   viewer->callback_init = [&](igl::viewer::Viewer& viewer) 
   { 
