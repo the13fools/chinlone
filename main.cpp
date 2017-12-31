@@ -14,8 +14,8 @@ void logToFile(const Eigen::MatrixXd W, std::string foldername, std::string file
 {
 #ifndef WIN32
     char folderpath[50];
-    sprintf(folderpath, "log/%s", foldername.c_str());
-    mkdir("log", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    sprintf(folderpath, "ex/%s", foldername.c_str());
+    mkdir("ex", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     mkdir(folderpath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     char logpath[50];
     sprintf(logpath, "%s/%s.txt", folderpath, filename.c_str());
@@ -37,10 +37,10 @@ void logToFile(const Eigen::MatrixXd W, std::string foldername, std::string file
 #endif
 }
 
-void computeCentroids(const Eigen::MatrixXi &F,const Eigen::MatrixXd &V, Eigen::MatrixXd &centroids)
+void computeCentroids(const Eigen::MatrixXi &_F,const Eigen::MatrixXd &_V, Eigen::MatrixXd &centroids)
 {
-    int nfaces = F.rows();
-    int nverts = V.rows();
+    int nfaces = _F.rows();
+    int nverts = _V.rows();
 
     centroids.resize(nfaces, 3);
     for (int i = 0; i < nfaces; i++)
@@ -48,22 +48,50 @@ void computeCentroids(const Eigen::MatrixXi &F,const Eigen::MatrixXd &V, Eigen::
         Eigen::Vector3d pos(0,0,0);
         for (int j = 0; j < 3; j++)
         {
-            pos += V.row(F(i,j));
+            pos += _V.row(_F(i,j));
         }
         centroids.row(i) = pos/3;
     }
 }
 
-Eigen::Vector3d faceNormal(const Eigen::MatrixXi &F, const Eigen::MatrixXd &V, int faceidx)
+Eigen::Vector3d faceNormal(const Eigen::MatrixXi &_F, const Eigen::MatrixXd &_V, int faceidx)
 {
-    Eigen::Vector3d p0 = V.row(F(faceidx, 0));
-    Eigen::Vector3d p1 = V.row(F(faceidx, 1));
-    Eigen::Vector3d p2 = V.row(F(faceidx, 2));
+    Eigen::Vector3d p0 = _V.row(_F(faceidx, 0));
+    Eigen::Vector3d p1 = _V.row(_F(faceidx, 1));
+    Eigen::Vector3d p2 = _V.row(_F(faceidx, 2));
     Eigen::Vector3d n = (p1 - p0).cross(p2 - p0);
     n /= n.norm();
     return n;
 }
 
+
+void propogateField(const Eigen::MatrixXi &F_div, const Eigen::MatrixXd &V_div, const Eigen::MatrixXi &E, const Eigen::MatrixXi &F_edges, Eigen::MatrixXd &field)
+{
+  for (int i = 0; i < F_div.rows(); i++)
+  {
+      for (int e = 0; e < 3; e++) 
+      {
+          int edgeIdx  = F_edges(i, e);
+	  int neighbor = E( edgeIdx, 2 );
+          if (neighbor == i) { neighbor = E( edgeIdx, 3 ); }
+          if (field.row(neighbor).norm() < .01)
+	  {
+	      Eigen::Vector3d n1 = faceNormal(F_div, V_div, i);
+              Eigen::Vector3d n2 = faceNormal(F_div, V_div, neighbor);
+              Eigen::Vector3d commone = V_div.row( E(edgeIdx, 0) ) - V_div.row( E(edgeIdx, 1) );
+	      commone.normalize();
+
+	      Eigen::Vector3d t1 = n1.cross(commone);
+	      Eigen::Vector3d t2 = n2.cross(commone);	  
+              
+	      double alpha = commone.dot( field.row(i) );
+	      double beta  = t1.dot( field.row(i) );
+
+	      field.row(neighbor) = alpha * commone + beta * t2;
+	  }   	  
+      }	  
+  } 
+}
 
 int main(int argc, char *argv[])
 {
@@ -91,28 +119,44 @@ int main(int argc, char *argv[])
     2,6,8,
     2,8,4).finished().array()-1;
 
-  Eigen::MatrixXi E;
-  Eigen::MatrixXi F_edges;
-  buildEdges(F, E);
-  buildEdgesPerFace(F, E, F_edges);
 
   Eigen::MatrixXd V_div;
   Eigen::MatrixXi F_div;
- 
-  igl::upsample(V,F,V_div, F_div,0);
+
+  int divFactor = 5;
+
+  igl::upsample(V,F,V_div, F_div, divFactor);
+
+  
+  Eigen::MatrixXi E;
+  Eigen::MatrixXi F_edges;
+  buildEdges(F, E);
+  buildEdgesPerFace(F, E, F_edges); 
+
+  Eigen::MatrixXd field = Eigen::MatrixXd::Zero(F.rows(), 3);
+  field.row(0) = Eigen::Vector3d(0, 1, 0).transpose();
+  propogateField(F, V, E, F_edges, field);
+  Eigen::MatrixXd field_div =  Eigen::MatrixXd::Zero(F_div.rows(), 3);
+
+  for (int i = 0; i < field.rows(); i++) 
+  {
+      for (int j = 0; j < pow(4, divFactor); j++)
+      {
+          field_div.row( pow(4, divFactor) * i + j) = field.row(i);
+      } 
+  }
+
 
   Eigen::MatrixXd F_centroids;
   computeCentroids(F_div, V_div, F_centroids); 
  
-  Eigen::MatrixXd field = Eigen::MatrixXd::Zero(F_div.rows(), 3);
-  field.row(0) = Eigen::Vector3d(0, 1, 0).transpose();
   const Eigen::RowVector3d red(0.9,.1,.1),green(0.1,0.9,0.2),blue(0.1,0.2,0.8);
 
   // Plot the mesh
   igl::viewer::Viewer *viewer = new igl::viewer::Viewer();
   viewer->data.set_mesh(V_div, F_div);
   viewer->data.set_face_based(true);
-  viewer->data.add_edges( F_centroids  + field, F_centroids, green);
+  viewer->data.add_edges( F_centroids  + field_div * .3 / 5., F_centroids, green);
 
   viewer->callback_init = [&](igl::viewer::Viewer& viewer) 
   { 
