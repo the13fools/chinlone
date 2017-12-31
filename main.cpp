@@ -133,8 +133,13 @@ int main(int argc, char *argv[])
   buildEdges(F, E);
   buildEdgesPerFace(F, E, F_edges); 
 
+
+
   Eigen::MatrixXd field = Eigen::MatrixXd::Zero(F.rows(), 3);
-  field.row(0) = Eigen::Vector3d(0, 1, 0).transpose();
+
+  Eigen::Matrix3d t(Eigen::AngleAxisd(M_PI, Eigen::Vector3d(0,0,1)));
+  field.row(0) = t * Eigen::Vector3d(1, 0, 0);
+
   propogateField(F, V, E, F_edges, field);
   Eigen::MatrixXd field_div =  Eigen::MatrixXd::Zero(F_div.rows(), 3);
 
