@@ -96,7 +96,7 @@ void propogateField(const Eigen::MatrixXi &F_div, const Eigen::MatrixXd &V_div, 
 int main(int argc, char *argv[])
 {
   // Inline mesh of a cube
-  const Eigen::MatrixXd V= (Eigen::MatrixXd(8,3)<<
+/*  const Eigen::MatrixXd V= (Eigen::MatrixXd(8,3)<<
     0.0,0.0,0.0,
     0.0,0.0,1.0,
     0.0,1.0,0.0,
@@ -118,7 +118,10 @@ int main(int argc, char *argv[])
     1,6,2,
     2,6,8,
     2,8,4).finished().array()-1;
-
+*/
+  Eigen::MatrixXd V;
+  Eigen::MatrixXi F;
+  igl::readOBJ("../tet.obj", V, F);
 
   Eigen::MatrixXd V_div;
   Eigen::MatrixXi F_div;
@@ -146,13 +149,16 @@ int main(int argc, char *argv[])
   Eigen::MatrixXd F_centroids;
   computeCentroids(F_div, V_div, F_centroids); 
 
-  for (int ax = 0; ax < 4; ax ++) 
+  for (int ax = 0; ax < 3; ax ++) 
   {
 
       Eigen::MatrixXd field = Eigen::MatrixXd::Zero(F.rows(), 3);
 
-      Eigen::Matrix3d t(Eigen::AngleAxisd(M_PI *( .3 + 2./4. *ax), Eigen::Vector3d(0,0,1)));
-      field.row(0) = t * Eigen::Vector3d(1, 0, 0);
+      Eigen::Matrix3d t(Eigen::AngleAxisd(M_PI *(1. / 6. +  2./3. *ax), faceNormal(F,V,0) ));
+      Eigen::Vector3d r = Eigen::Vector3d(0,-1, 0).dot(faceNormal(F,V,0)) * faceNormal(F,V,0);;
+      r = (Eigen::Vector3d(0, -1, 0) - r);
+      r.normalize();
+      field.row(0) = t * r;
 
       propogateField(F, V, E, F_edges, field);
       Eigen::MatrixXd field_div =  Eigen::MatrixXd::Zero(F_div.rows(), 3);
@@ -164,8 +170,8 @@ int main(int argc, char *argv[])
 	      field_div.row( pow(4, divFactor) * i + j) = field.row(i);
 	  } 
       }
-      logToFile(field_div, "cube", std::to_string(ax));
-      igl::writeOBJ("cube.obj",V_div,F_div);
+      logToFile(field_div, "tet", std::to_string(ax));
+      igl::writeOBJ("tet.obj",V_div,F_div);
 
       viewer->data.add_edges( F_centroids  + field_div * .1 / 5., F_centroids, colors[ax]);
   }
