@@ -67,29 +67,41 @@ Eigen::Vector3d faceNormal(const Eigen::MatrixXi &_F, const Eigen::MatrixXd &_V,
 
 void propogateField(const Eigen::MatrixXi &F_div, const Eigen::MatrixXd &V_div, const Eigen::MatrixXi &E, const Eigen::MatrixXi &F_edges, Eigen::MatrixXd &field)
 {
-  for (int i = 0; i < F_div.rows(); i++)
+  bool done = false;
+  while (!done) 
   {
-      for (int e = 0; e < 3; e++) 
+      for (int i = 0; i < F_div.rows(); i++)
       {
-          int edgeIdx  = F_edges(i, e);
-	  int neighbor = E( edgeIdx, 2 );
-          if (neighbor == i) { neighbor = E( edgeIdx, 3 ); }
-          if (field.row(neighbor).norm() < .01)
+	  for (int e = 0; e < 3; e++) 
 	  {
-	      Eigen::Vector3d n1 = faceNormal(F_div, V_div, i);
-              Eigen::Vector3d n2 = faceNormal(F_div, V_div, neighbor);
-              Eigen::Vector3d commone = V_div.row( E(edgeIdx, 0) ) - V_div.row( E(edgeIdx, 1) );
-	      commone.normalize();
+	      int edgeIdx  = F_edges(i, e);
+	      int neighbor = E( edgeIdx, 2 );
+	      if (neighbor == i) { neighbor = E( edgeIdx, 3 ); }
+	      if (field.row(neighbor).norm() < .01)
+	      {
+		  Eigen::Vector3d n1 = faceNormal(F_div, V_div, i);
+		  Eigen::Vector3d n2 = faceNormal(F_div, V_div, neighbor);
+		  Eigen::Vector3d commone = V_div.row( E(edgeIdx, 0) ) - V_div.row( E(edgeIdx, 1) );
+		  commone.normalize();
 
-	      Eigen::Vector3d t1 = n1.cross(commone);
-	      Eigen::Vector3d t2 = n2.cross(commone);	  
-              
-	      double alpha = commone.dot( field.row(i) );
-	      double beta  = t1.dot( field.row(i) );
+		  Eigen::Vector3d t1 = n1.cross(commone);
+		  Eigen::Vector3d t2 = n2.cross(commone);	  
+		  
+		  double alpha = commone.dot( field.row(i) );
+		  double beta  = t1.dot( field.row(i) );
 
-	      field.row(neighbor) = alpha * commone + beta * t2;
-	  }   	  
-      }	  
+		  field.row(neighbor) = alpha * commone + beta * t2;
+	      }   	  
+	  }	  
+      }
+      done = true;
+      for (int i = 0; i < F_div.rows(); i++)
+      {
+          if (field.row(i).norm() < .01)
+	  {
+              done = false;
+	  }
+      }
   } 
 }
 
@@ -126,7 +138,7 @@ int main(int argc, char *argv[])
   Eigen::MatrixXd V_div;
   Eigen::MatrixXi F_div;
 
-  int divFactor = 5;
+  int divFactor = 0;
 
   igl::upsample(V,F,V_div, F_div, divFactor);
 
@@ -170,8 +182,8 @@ int main(int argc, char *argv[])
 	      field_div.row( pow(4, divFactor) * i + j) = field.row(i);
 	  } 
       }
-      logToFile(field_div, "tet", std::to_string(ax));
-      igl::writeOBJ("tet.obj",V_div,F_div);
+      logToFile(field_div, "dodecahedron", std::to_string(ax));
+      igl::writeOBJ("dodecahedron.obj",V_div,F_div);
 
       viewer->data.add_edges( F_centroids  + field_div * .1 / 5., F_centroids, colors[ax]);
   }
