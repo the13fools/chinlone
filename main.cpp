@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
 
       Eigen::MatrixXd field = Eigen::MatrixXd::Zero(F.rows(), 3);
 
-      Eigen::Matrix3d t(Eigen::AngleAxisd(M_PI *(1. / 6. +  2./3. *ax), faceNormal(F,V,0) ));
+      Eigen::Matrix3d t(Eigen::AngleAxisd(M_PI *(1. / 12. +  2./3. *ax), faceNormal(F,V,0) ));
       Eigen::Vector3d r = Eigen::Vector3d(0,-1, 0).dot(faceNormal(F,V,0)) * faceNormal(F,V,0);;
       r = (Eigen::Vector3d(0, -1, 0) - r);
       r.normalize();
@@ -182,8 +182,8 @@ int main(int argc, char *argv[])
 	      field_div.row( pow(4, divFactor) * i + j) = field.row(i);
 	  } 
       }
-      logToFile(field_div, "dodecahedron", std::to_string(ax));
-      igl::writeOBJ("dodecahedron.obj",V_div,F_div);
+      logToFile(field_div, "tet", std::to_string(ax));
+      igl::writeOBJ("tet.obj",V_div,F_div);
 
       viewer->data.add_edges( F_centroids  + field_div * .1 / 5., F_centroids, colors[ax]);
   }
