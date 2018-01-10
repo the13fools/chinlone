@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
   Eigen::MatrixXd V_div;
   Eigen::MatrixXi F_div;
 
-  int divFactor = 5;
+  int divFactor = 2;
 
   igl::upsample(V,F,V_div, F_div, divFactor);
 
