@@ -1,6 +1,12 @@
 #include <igl/viewer/Viewer.h>
 #include <igl/upsample.h>
 #include <igl/avg_edge_length.h>
+#include <igl/unproject_onto_mesh.h>
+
+
+#include <igl/remove_unreferenced.h>
+
+#include <igl/loop.h>
 
 #include <iostream>
 #include <fstream>
@@ -9,6 +15,34 @@
 // #include <direct.h>
 
 using namespace std;
+
+void logToFile(const Eigen::MatrixXd W, std::string foldername, std::string filename)
+{
+#ifndef WIN32
+    char folderpath[50];
+    sprintf(folderpath, "ex/%s", foldername.c_str());
+    mkdir("ex", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    mkdir(folderpath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    char logpath[50];
+    sprintf(logpath, "%s/%s.txt", folderpath, filename.c_str());
+    std::ofstream myfile (logpath);
+    for(int i = 0; i < W.rows(); i++)
+    {
+        if (myfile.is_open())
+        {
+            myfile << W.row(i) << "\n";
+        }
+
+        else
+        {
+            std::cout << "Unable to open file";
+            break;
+        }
+    }
+    myfile.close();
+#endif
+}
+
 
 #define MAXBUFSIZE  ((int) 1e6)
 Eigen::MatrixXd readMatrix(const char *filename)
@@ -84,27 +118,81 @@ Eigen::Vector3d faceNormal(const Eigen::MatrixXi &_F, const Eigen::MatrixXd &_V,
 int main(int argc, char *argv[])
 {
   // Inline mesh of a cube
+  Eigen::MatrixXd V_orig;
+  Eigen::MatrixXi F_orig;
   Eigen::MatrixXd V;
   Eigen::MatrixXi F;
-  igl::readOBJ("../tet.obj", V, F);
+  igl::readOBJ("../sphere.obj", V_orig, F_orig);
 
-  Eigen::MatrixXd inp = readMatrix("../test.txt");
-  Eigen::MatrixXd line_starts = inp.block(0, 0, inp.rows() - 1, 3);
-  Eigen::MatrixXd line_ends  = inp.block(1, 0, inp.rows() - 1, 3);
 
-  igl::viewer::Viewer *viewer = new igl::viewer::Viewer();
-  viewer->data.set_mesh(V, F);
-  viewer->data.set_face_based(true);
+  Eigen::MatrixXd V_unref;
+  Eigen::MatrixXi F_unref;
+  Eigen::MatrixXi unref;
+  igl::remove_unreferenced(V_orig, F_orig, V_unref, F_unref, unref);
   
+  std::cout << unref;
+
+  igl::upsample(V_unref, F_unref, V, F, 0);
+
+
+  igl::writeOBJ("../sphere_clean.obj",V,F);
+
+  Eigen::MatrixXd vf = Eigen::MatrixXd::Zero(F.rows(), 3);
+  
+  for (int i = 0; i < F.rows(); i++) 
+  {
+      Eigen::Vector3d n = faceNormal(F, V, i); 
+      Eigen::Vector3d z = Eigen::Vector3d(0, 0, 1); 
+      vf.row(i) = n.cross(z);
+      vf.row(i) = Eigen::AngleAxisd( M_PI / 2., n) * vf.row(i).transpose();
+      vf.row(i).normalize();
+  } 
+
+  Eigen::MatrixXd F_centroids;
+  computeCentroids(F, V, F_centroids);
+
+  // Initialize white
+  Eigen::MatrixXd C = Eigen::MatrixXd::Constant(F.rows(),3,1);
+  igl::viewer::Viewer viewer;
+  viewer.callback_mouse_down = 
+    [&V,&F,&C](igl::viewer::Viewer& viewer, int, int)->bool
+  {
+    int fid;
+    Eigen::Vector3f bc;
+    // Cast a ray in the view direction starting from the mouse position
+    double x = viewer.current_mouse_x;
+    double y = viewer.core.viewport(3) - viewer.current_mouse_y;
+    if(igl::unproject_onto_mesh(Eigen::Vector2f(x,y), viewer.core.view * viewer.core.model,
+      viewer.core.proj, viewer.core.viewport, V, F, fid, bc))
+    {
+      // paint hit red
+      C.row(fid)<<1,0,0;
+      std::cout << fid << " " << F(fid, 0) + 1 << " "<< F(fid, 1) + 1 << " " << F(fid, 2) + 1 << " " << std::endl;
+      viewer.data.set_colors(C);
+      return true;
+    }
+    return false;
+  };
+  std::cout<<R"(Usage:
+  [click]  Pick face on shape
+
+)";
+
+
+
+  viewer.data.set_mesh(V, F);
+  viewer.data.set_face_based(true);
+  viewer.data.set_colors(C); 
+
   const Eigen::RowVector3d red(0.9,.1,.1);
-  viewer->data.add_edges( line_starts, line_ends, red);
-  
-  viewer->callback_init = [&](igl::viewer::Viewer& viewer) 
+  viewer.data.add_edges( F_centroids, F_centroids + vf * .1, red);
+  logToFile(vf, "a", "sphere_field.txt"); 
+ /* viewer->callback_init = [&](igl::viewer::Viewer& viewer) 
   { 
       viewer.ngui->window()->setVisible(false); 
       viewer.screen->performLayout();
       return false;
-  };
+  }; */
 
-  viewer->launch();
+  viewer.launch();
 }
